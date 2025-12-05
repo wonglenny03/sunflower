@@ -9,7 +9,7 @@ set -e
 
 APP_USER="companysearch"
 APP_DIR="/opt/company-search"
-PM2_CONFIG="/home/${APP_USER}/ecosystem.config.js"
+PM2_CONFIG="${APP_DIR}/ecosystem.config.js"
 
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
@@ -69,10 +69,10 @@ log_success "PM2 配置: $PM2_CONFIG"
 log_info "停止现有进程..."
 sudo -u ${APP_USER} pm2 delete all 2>/dev/null || true
 
-# 启动应用
+# 启动应用（从项目目录启动）
 log_info "启动应用..."
 cd ${APP_DIR}
-sudo -u ${APP_USER} pm2 start ${PM2_CONFIG}
+sudo -u ${APP_USER} pm2 start ecosystem.config.js
 
 # 保存配置
 sudo -u ${APP_USER} pm2 save

@@ -172,7 +172,7 @@ log_success "前端构建完成"
 
 # 配置 PM2
 log_info "配置 PM2..."
-PM2_CONFIG="/home/${APP_USER}/ecosystem.config.js"
+PM2_CONFIG="${APP_DIR}/ecosystem.config.js"
 
 # 检查 .env 文件是否存在
 ENV_FILE="${APP_DIR}/apps/api/.env"
@@ -181,12 +181,17 @@ if [ ! -f "$ENV_FILE" ]; then
     log_info "将使用默认环境变量，建议创建 .env 文件"
 fi
 
-cat > ${PM2_CONFIG} <<EOF
+# 检查项目目录中是否已有 PM2 配置文件
+if [ -f "$PM2_CONFIG" ]; then
+    log_success "使用项目目录中的 PM2 配置文件: $PM2_CONFIG"
+else
+    log_info "创建 PM2 配置文件: $PM2_CONFIG"
+    cat > ${PM2_CONFIG} <<EOF
 module.exports = {
   apps: [
     {
       name: 'company-search-api',
-      cwd: '${APP_DIR}/apps/api',
+      cwd: './apps/api',
       script: 'dist/main.js',
       instances: 1,
       exec_mode: 'fork',
@@ -194,8 +199,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: ${API_PORT}
       },
-      error_file: '/home/${APP_USER}/logs/api-error.log',
-      out_file: '/home/${APP_USER}/logs/api-out.log',
+      error_file: './logs/api-error.log',
+      out_file: './logs/api-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
       autorestart: true,
@@ -205,7 +210,7 @@ module.exports = {
     },
     {
       name: 'company-search-web',
-      cwd: '${APP_DIR}/apps/web',
+      cwd: './apps/web',
       script: 'node_modules/next/dist/bin/next',
       args: 'start -p ${WEB_PORT}',
       instances: 1,
@@ -215,8 +220,8 @@ module.exports = {
         PORT: ${WEB_PORT},
         NEXT_PUBLIC_API_URL: 'http://localhost:${API_PORT}'
       },
-      error_file: '/home/${APP_USER}/logs/web-error.log',
-      out_file: '/home/${APP_USER}/logs/web-out.log',
+      error_file: './logs/web-error.log',
+      out_file: './logs/web-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
       autorestart: true,
@@ -227,12 +232,12 @@ module.exports = {
   ]
 };
 EOF
+    chown ${APP_USER}:${APP_USER} ${PM2_CONFIG}
+fi
 
-chown ${APP_USER}:${APP_USER} ${PM2_CONFIG}
-
-# 创建日志目录
-mkdir -p /home/${APP_USER}/logs
-chown -R ${APP_USER}:${APP_USER} /home/${APP_USER}/logs
+# 创建日志目录（在项目目录中）
+mkdir -p ${APP_DIR}/logs
+chown -R ${APP_USER}:${APP_USER} ${APP_DIR}/logs
 
 log_success "PM2 配置完成"
 
@@ -240,9 +245,10 @@ log_success "PM2 配置完成"
 log_info "停止现有进程..."
 sudo -u ${APP_USER} pm2 delete all 2>/dev/null || true
 
-# 启动应用
+# 启动应用（从项目目录启动）
 log_info "启动应用..."
-sudo -u ${APP_USER} pm2 start ${PM2_CONFIG}
+cd ${APP_DIR}
+sudo -u ${APP_USER} pm2 start ecosystem.config.js
 
 # 保存 PM2 配置
 sudo -u ${APP_USER} pm2 save
