@@ -129,6 +129,23 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 - pnpm 8+
 - PostgreSQL 14+
 
+### AWS EC2 一键部署
+
+如果要在 AWS EC2 上部署，可以使用一键部署脚本：
+
+```bash
+# 1. 上传脚本到服务器
+scp -i your-key.pem scripts/deploy-aws.sh ec2-user@your-ec2-ip:/tmp/
+
+# 2. SSH 连接到服务器
+ssh -i your-key.pem ec2-user@your-ec2-ip
+
+# 3. 运行部署脚本
+sudo bash /tmp/deploy-aws.sh
+```
+
+详细部署指南请查看: [AWS 部署指南](docs/AWS_DEPLOYMENT_GUIDE.md)
+
 ### 安装 pnpm
 
 ```bash
