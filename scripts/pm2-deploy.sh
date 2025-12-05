@@ -129,10 +129,13 @@ fi
 # 前端环境变量
 if [ ! -f "${APP_DIR}/apps/web/.env.production" ]; then
     mkdir -p ${APP_DIR}/apps/web
+    # 获取公网 IP
+    PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "your-server-ip")
     cat > ${APP_DIR}/apps/web/.env.production <<EOF
-NEXT_PUBLIC_API_URL=http://localhost:${API_PORT}
+NEXT_PUBLIC_API_URL=http://${PUBLIC_IP}:${API_PORT}
 EOF
     chown ${APP_USER}:${APP_USER} ${APP_DIR}/apps/web/.env.production
+    log_info "前端 API URL 已设置为: http://${PUBLIC_IP}:${API_PORT}"
 fi
 
 # 安装依赖
