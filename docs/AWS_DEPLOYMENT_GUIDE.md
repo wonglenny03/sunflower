@@ -159,6 +159,62 @@ sudo bash scripts/deploy-aws-quick.sh
 
 ---
 
+## 验证部署
+
+部署完成后，可以使用验证脚本检查部署是否成功：
+
+### 完整验证（推荐）
+
+```bash
+# 上传验证脚本
+scp -i your-key.pem scripts/verify-deployment.sh ec2-user@your-ec2-ip:/tmp/
+
+# 在服务器上运行
+sudo bash /tmp/verify-deployment.sh
+```
+
+验证脚本会检查：
+- ✅ 必需软件是否安装
+- ✅ Node.js 版本是否符合要求
+- ✅ 系统服务是否运行（PostgreSQL, Nginx）
+- ✅ 端口是否监听
+- ✅ 应用目录和文件是否存在
+- ✅ PM2 进程是否运行
+- ✅ 数据库连接是否正常
+- ✅ HTTP 服务是否可访问
+- ✅ 环境变量是否配置
+- ✅ 日志是否有错误
+
+### 快速检查
+
+```bash
+# 快速检查脚本（简化版）
+sudo bash scripts/quick-check.sh
+```
+
+### 手动验证
+
+```bash
+# 1. 检查服务状态
+sudo systemctl status postgresql-15
+sudo systemctl status nginx
+sudo -u companysearch pm2 status
+
+# 2. 检查端口
+sudo netstat -tuln | grep -E "3000|3001|5432"
+
+# 3. 检查 HTTP 服务
+curl http://localhost:3001/api
+curl http://localhost:3000
+
+# 4. 查看日志
+sudo -u companysearch pm2 logs
+sudo -u companysearch pm2 logs company-search-api --lines 50
+sudo -u companysearch pm2 logs company-search-web --lines 50
+```
+
+---
+
 ## 部署后配置
 
 ### 1. 配置环境变量

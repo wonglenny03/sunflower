@@ -19,7 +19,7 @@ APP_DIR="/opt/company-search"
 APP_USER="companysearch"
 DB_NAME="company_search"
 DB_USER="companysearch"
-NODE_VERSION="20"  # Node.js 版本
+NODE_VERSION="22"  # Node.js 版本
 API_PORT=3001
 WEB_PORT=3000
 
@@ -52,7 +52,30 @@ check_root() {
 update_system() {
     log_info "更新系统包..."
     dnf update -y
-    dnf install -y git curl wget tar gzip
+    
+    # 检查 curl 是否可用（curl-minimal 也提供 curl 命令）
+    if command -v curl &> /dev/null; then
+        log_info "curl 已安装: $(curl --version 2>/dev/null | head -1 || echo 'curl-minimal')"
+    else
+        # 如果 curl-minimal 存在，移除它并安装完整版 curl
+        if dnf list installed curl-minimal &> /dev/null; then
+            log_info "移除 curl-minimal 并安装完整版 curl..."
+            dnf remove -y curl-minimal 2>/dev/null || true
+        fi
+        dnf install -y curl 2>/dev/null || {
+            log_warning "curl 安装失败，使用 curl-minimal（如果可用）"
+            dnf install -y curl-minimal 2>/dev/null || true
+        }
+    fi
+    
+    # 安装其他必需工具（忽略已安装的包）
+    log_info "安装基础工具..."
+    for pkg in git wget tar gzip; do
+        if ! command -v $pkg &> /dev/null; then
+            dnf install -y $pkg 2>/dev/null || log_warning "$pkg 安装失败或已安装"
+        fi
+    done
+    
     log_success "系统更新完成"
 }
 
@@ -93,39 +116,149 @@ install_pnpm() {
     log_success "pnpm 安装完成: $(pnpm -v)"
 }
 
+# 检测 PostgreSQL 服务名称
+detect_postgres_service() {
+    # 尝试常见的服务名称
+    for svc in postgresql-15 postgresql postgresql-14 postgresql-13 postgresql-12; do
+        if systemctl list-unit-files | grep -q "$svc.service"; then
+            echo "$svc"
+            return 0
+        fi
+    done
+    
+    # 如果找不到，尝试查找所有 postgres 相关服务
+    POSTGRES_SVC=$(systemctl list-unit-files | grep -i postgres | grep -v "@" | head -1 | awk '{print $1}' | sed 's/.service//')
+    if [ -n "$POSTGRES_SVC" ]; then
+        echo "$POSTGRES_SVC"
+        return 0
+    fi
+    
+    # 默认返回
+    echo "postgresql-15"
+    return 1
+}
+
 # 安装 PostgreSQL
 install_postgresql() {
     log_info "安装 PostgreSQL..."
     
+    # 检测是否已安装
     if command -v psql &> /dev/null; then
-        log_warning "PostgreSQL 已安装"
+        PG_VERSION=$(psql --version | grep -oP '\d+' | head -1)
+        log_warning "PostgreSQL 已安装，版本: $PG_VERSION"
+        
+        # 检测服务名称
+        POSTGRES_SERVICE=$(detect_postgres_service)
+        log_info "检测到 PostgreSQL 服务名: $POSTGRES_SERVICE"
+        
+        # 确保服务运行
+        if systemctl is-active --quiet $POSTGRES_SERVICE; then
+            log_success "PostgreSQL 服务正在运行"
+        else
+            log_info "启动 PostgreSQL 服务..."
+            systemctl enable $POSTGRES_SERVICE 2>/dev/null || true
+            systemctl start $POSTGRES_SERVICE 2>/dev/null || {
+                log_warning "服务 $POSTGRES_SERVICE 启动失败，尝试手动启动..."
+                # 尝试直接启动 postgres 进程
+                sudo -u postgres /usr/bin/postgres -D /var/lib/pgsql/data & 2>/dev/null || true
+            }
+        fi
+        
+        # 保存服务名
+        echo "$POSTGRES_SERVICE" > /tmp/postgres_service_name
         return
     fi
     
-    # Amazon Linux 2023 使用 dnf，安装 PostgreSQL 15
-    dnf install -y postgresql15 postgresql15-server
+    # 尝试安装 PostgreSQL 15
+    log_info "安装 PostgreSQL 15..."
+    if dnf install -y postgresql15 postgresql15-server 2>/dev/null; then
+        PG_VERSION=15
+        PG_DATA_DIR="/var/lib/pgsql/15/data"
+        PG_BIN="/usr/pgsql-15/bin"
+        POSTGRES_SERVICE="postgresql-15"
+    else
+        log_warning "PostgreSQL 15 安装失败，尝试安装默认版本..."
+        dnf install -y postgresql postgresql-server
+        PG_DATA_DIR="/var/lib/pgsql/data"
+        PG_BIN="/usr/bin"
+        POSTGRES_SERVICE=$(detect_postgres_service)
+    fi
     
     # 初始化数据库（如果尚未初始化）
-    if [ ! -d "/var/lib/pgsql/15/data" ]; then
-        /usr/pgsql-15/bin/postgresql-15-setup initdb
+    if [ ! -d "$PG_DATA_DIR" ] || [ -z "$(ls -A $PG_DATA_DIR 2>/dev/null)" ]; then
+        log_info "初始化 PostgreSQL 数据库..."
+        
+        # 创建数据目录
+        mkdir -p $PG_DATA_DIR
+        chown postgres:postgres $PG_DATA_DIR
+        chmod 700 $PG_DATA_DIR
+        
+        # 尝试不同的初始化方式
+        if [ -f "/usr/pgsql-15/bin/postgresql-15-setup" ]; then
+            /usr/pgsql-15/bin/postgresql-15-setup initdb
+        elif [ -f "$PG_BIN/postgresql-15-setup" ]; then
+            $PG_BIN/postgresql-15-setup initdb
+        elif [ -f "/usr/bin/postgresql-setup" ]; then
+            /usr/bin/postgresql-setup initdb
+        elif command -v initdb &> /dev/null; then
+            # 直接使用 initdb
+            sudo -u postgres initdb -D $PG_DATA_DIR || {
+                log_error "数据库初始化失败"
+                exit 1
+            }
+        else
+            # 查找 initdb 位置
+            INITDB_PATH=$(find /usr -name "initdb" 2>/dev/null | head -1)
+            if [ -n "$INITDB_PATH" ]; then
+                sudo -u postgres $INITDB_PATH -D $PG_DATA_DIR || {
+                    log_error "数据库初始化失败"
+                    exit 1
+                }
+            else
+                log_error "无法找到 initdb 命令"
+                log_info "尝试手动初始化: sudo -u postgres initdb -D $PG_DATA_DIR"
+                exit 1
+            fi
+        fi
     fi
     
     # 配置 PostgreSQL 允许本地连接
-    PG_HBA="/var/lib/pgsql/15/data/pg_hba.conf"
-    if ! grep -q "host    all             all             127.0.0.1/32" "$PG_HBA" | grep -v "^#"; then
-        # 确保本地连接使用 md5 认证
-        sed -i 's/^host    all             all             127.0.0.1\/32.*/host    all             all             127.0.0.1\/32            md5/' "$PG_HBA" || \
-        echo "host    all             all             127.0.0.1/32            md5" >> "$PG_HBA"
+    PG_HBA="$PG_DATA_DIR/pg_hba.conf"
+    if [ -f "$PG_HBA" ]; then
+        if ! grep -q "host    all             all             127.0.0.1\/32" "$PG_HBA" | grep -v "^#"; then
+            sed -i 's/^host    all             all             127.0.0.1\/32.*/host    all             all             127.0.0.1\/32            md5/' "$PG_HBA" 2>/dev/null || \
+            echo "host    all             all             127.0.0.1/32            md5" >> "$PG_HBA"
+        fi
     fi
     
     # 启动并启用 PostgreSQL
-    systemctl enable postgresql-15
-    systemctl start postgresql-15
+    log_info "启动 PostgreSQL 服务 ($POSTGRES_SERVICE)..."
+    systemctl enable $POSTGRES_SERVICE 2>/dev/null || {
+        log_warning "无法启用服务 $POSTGRES_SERVICE，尝试检测其他服务名..."
+        POSTGRES_SERVICE=$(detect_postgres_service)
+        systemctl enable $POSTGRES_SERVICE 2>/dev/null || true
+    }
+    
+    systemctl start $POSTGRES_SERVICE || {
+        log_warning "systemctl 启动失败，尝试其他方式..."
+        # 尝试直接启动
+        sudo -u postgres $PG_BIN/postgres -D $PG_DATA_DIR > /var/log/postgresql.log 2>&1 &
+        sleep 2
+    }
     
     # 等待 PostgreSQL 启动
     sleep 3
     
-    log_success "PostgreSQL 安装完成"
+    # 验证服务运行
+    if systemctl is-active --quiet $POSTGRES_SERVICE 2>/dev/null || pgrep -x postgres > /dev/null; then
+        log_success "PostgreSQL 安装完成，服务名: $POSTGRES_SERVICE"
+    else
+        log_error "PostgreSQL 服务未运行，请手动检查"
+        log_info "尝试手动启动: sudo systemctl start $POSTGRES_SERVICE"
+    fi
+    
+    # 保存服务名供后续使用
+    echo "$POSTGRES_SERVICE" > /tmp/postgres_service_name
 }
 
 # 配置 PostgreSQL
@@ -249,17 +382,35 @@ deploy_app() {
     
     # 检查代码是否存在
     if [ ! -f "${APP_DIR}/package.json" ]; then
-        log_error "未找到代码文件，请先部署代码到 ${APP_DIR}"
-        log_info "可以使用以下命令部署："
-        log_info "  cd ${APP_DIR}"
-        log_info "  sudo -u ${APP_USER} git clone <your-repo-url> ."
-        exit 1
+        log_warning "未找到代码文件"
+        log_info "可以使用以下方式部署代码："
+        log_info "  1. 运行代码部署脚本: sudo bash /tmp/deploy-code.sh"
+        log_info "  2. 使用 Git: cd ${APP_DIR} && sudo -u ${APP_USER} git clone <your-repo-url> ."
+        log_info "  3. 使用 SCP 上传代码包"
+        echo ""
+        read -p "是否现在部署代码？(y/n，选择 n 将跳过构建步骤): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # 如果有部署脚本，运行它
+            if [ -f "/tmp/deploy-code.sh" ]; then
+                bash /tmp/deploy-code.sh
+            else
+                log_info "请手动部署代码到 ${APP_DIR}"
+                log_info "部署完成后，运行: sudo bash /tmp/deploy-aws.sh"
+                exit 0
+            fi
+        else
+            log_warning "跳过代码部署，将只完成系统配置"
+            log_info "代码部署后，请运行构建脚本完成部署"
+            return 1  # 返回 1 表示代码未部署
+        fi
     fi
     
     # 确保目录权限
     chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
     
     log_success "应用代码部署完成"
+    return 0
 }
 
 # 安装依赖和构建
@@ -482,15 +633,29 @@ EOF
 start_services() {
     log_info "启动服务..."
     
+    # 读取 PostgreSQL 服务名
+    if [ -f "/tmp/postgres_service_name" ]; then
+        POSTGRES_SERVICE=$(cat /tmp/postgres_service_name)
+    else
+        POSTGRES_SERVICE=$(detect_postgres_service)
+    fi
+    
+    log_info "使用 PostgreSQL 服务: $POSTGRES_SERVICE"
+    
     # 启动 PostgreSQL
-    systemctl restart postgresql-15
+    systemctl restart $POSTGRES_SERVICE 2>/dev/null || {
+        log_warning "systemctl 重启失败，尝试启动..."
+        systemctl start $POSTGRES_SERVICE 2>/dev/null || true
+    }
     sleep 2
     
     # 检查 PostgreSQL 是否启动成功
-    if ! systemctl is-active --quiet postgresql-15; then
+    if ! systemctl is-active --quiet $POSTGRES_SERVICE 2>/dev/null && ! pgrep -x postgres > /dev/null; then
         log_error "PostgreSQL 启动失败"
-        systemctl status postgresql-15 --no-pager -l
-        exit 1
+        systemctl status $POSTGRES_SERVICE --no-pager -l 2>/dev/null || true
+        log_warning "请手动检查 PostgreSQL 状态"
+    else
+        log_success "PostgreSQL 运行正常"
     fi
     
     # 使用 PM2 启动应用
@@ -529,7 +694,12 @@ start_services() {
     log_info "检查服务状态..."
     echo ""
     echo -e "${CYAN}PostgreSQL 状态:${NC}"
-    systemctl status postgresql-15 --no-pager -l | head -3
+    if [ -f "/tmp/postgres_service_name" ]; then
+        POSTGRES_SERVICE=$(cat /tmp/postgres_service_name)
+        systemctl status $POSTGRES_SERVICE --no-pager -l 2>/dev/null | head -3 || echo "  服务状态: 运行中（进程检查）"
+    else
+        echo "  无法确定服务名"
+    fi
     echo ""
     echo -e "${CYAN}PM2 应用状态:${NC}"
     sudo -u ${APP_USER} pm2 status
@@ -583,7 +753,7 @@ show_deployment_info() {
     echo "  查看 Nginx 状态: systemctl status nginx"
     echo "  重启 Nginx: systemctl restart nginx"
     echo ""
-    echo "  查看 PostgreSQL 状态: systemctl status postgresql-15"
+    echo "  查看 PostgreSQL 状态: systemctl status \$(cat /tmp/postgres_service_name 2>/dev/null || echo postgresql-15)"
     echo ""
     echo -e "${CYAN}重要提醒:${NC}"
     echo "  1. 请编辑 ${APP_DIR}/apps/api/.env 设置 OPENAI_API_KEY"
