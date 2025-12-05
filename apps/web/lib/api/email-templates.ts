@@ -33,15 +33,17 @@ export const emailTemplatesApi = {
 
   getById: async (id: string): Promise<EmailTemplate> => {
     // apiClient 的响应拦截器已经返回了 response.data
-    const response = await apiClient.instance.get(`/email-templates/${id}`)
-    return response
+    const response = await apiClient.instance.get(`/email-templates/${id}`) as any
+    // 后端返回格式: { success: true, data: EmailTemplate }
+    return response?.data || response
   },
 
   getDefault: async (): Promise<EmailTemplate | null> => {
     try {
       // apiClient 的响应拦截器已经返回了 response.data
-      const response = await apiClient.instance.get('/email-templates/default')
-      return response
+      const response = await apiClient.instance.get('/email-templates/default') as any
+      // 后端返回格式: { success: true, data: EmailTemplate }
+      return response?.data || response
     } catch (error: any) {
       if (error.response?.status === 404) {
         return null
@@ -52,8 +54,9 @@ export const emailTemplatesApi = {
 
   create: async (data: CreateEmailTemplateDto): Promise<EmailTemplate> => {
     // apiClient 的响应拦截器已经返回了 response.data
-    const response = await apiClient.instance.post('/email-templates', data)
-    return response
+    const response = await apiClient.instance.post('/email-templates', data) as any
+    // 后端返回格式: { success: true, data: EmailTemplate }
+    return response?.data || response
   },
 
   update: async (
@@ -61,8 +64,9 @@ export const emailTemplatesApi = {
     data: UpdateEmailTemplateDto,
   ): Promise<EmailTemplate> => {
     // apiClient 的响应拦截器已经返回了 response.data
-    const response = await apiClient.instance.put(`/email-templates/${id}`, data)
-    return response
+    const response = await apiClient.instance.put(`/email-templates/${id}`, data) as any
+    // 后端返回格式: { success: true, data: EmailTemplate }
+    return response?.data || response
   },
 
   delete: async (id: string): Promise<void> => {
@@ -73,8 +77,9 @@ export const emailTemplatesApi = {
     // apiClient 的响应拦截器已经返回了 response.data
     const response = await apiClient.instance.put(
       `/email-templates/${id}/set-default`,
-    )
-    return response
+    ) as any
+    // 后端返回格式: { success: true, data: EmailTemplate }
+    return response?.data || response
   },
 
   initDefaults: async (): Promise<void> => {

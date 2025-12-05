@@ -151,7 +151,7 @@ export default function SearchPage() {
       if (searchResult) {
         const updatedCompanies = searchResult.companies.map((c: Company) =>
           c.id === companyId
-            ? { ...c, emailSent: true, emailStatus: 'sent', emailSentAt: new Date() }
+            ? { ...c, emailSent: true, emailStatus: 'sent' as const, emailSentAt: new Date() }
             : c,
         )
         setSearchResult({ ...searchResult, companies: updatedCompanies })
@@ -177,7 +177,7 @@ export default function SearchPage() {
       if (searchResult) {
         const updatedCompanies = searchResult.companies.map((c: Company) =>
           selectedIds.includes(c.id)
-            ? { ...c, emailSent: true, emailStatus: 'sent', emailSentAt: new Date() }
+            ? { ...c, emailSent: true, emailStatus: 'sent' as const, emailSentAt: new Date() }
             : c,
         )
         setSearchResult({ ...searchResult, companies: updatedCompanies })
