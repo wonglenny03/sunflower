@@ -1,0 +1,624 @@
+# NestJS & Next.js 最佳实践规则 (Monorepo)
+
+## 项目概述
+这是一个使用 pnpm Monorepo 管理的项目，包含 NestJS (后端) 和 Next.js 14+ (前端) 构建的公司信息搜索系统。遵循以下最佳实践以确保代码质量和可维护性。
+
+## Monorepo 架构规则
+
+### 项目结构
+- 使用 pnpm workspace 管理多包项目
+- `apps/` 目录存放应用程序（api, web）
+- `packages/` 目录存放共享包（types, utils, config）
+- 根目录 `package.json` 包含工作区脚本和共享配置
+
+### 包命名规范
+- 应用包: `apps/{name}` (如 `apps/api`, `apps/web`)
+- 共享包: `@company-search/{name}` (如 `@company-search/types`, `@company-search/utils`)
+- 包名使用 kebab-case
+
+### 依赖管理
+- 共享依赖放在根 `package.json` 的 `devDependencies`
+- 特定包的依赖放在各自的 `package.json`
+- 使用 `pnpm --filter` 在特定包中安装依赖
+- 优先使用 workspace 协议引用本地包: `"@company-search/types": "workspace:*"`
+
+### 共享包规则
+- **types**: 存放 TypeScript 类型定义，供前后端共享
+- **utils**: 存放工具函数，确保前后端逻辑一致
+- **config**: 存放共享配置（如验证规则、常量等）
+- 共享包应该是纯 TypeScript，不依赖框架特定代码
+
+### 脚本管理
+- 根 `package.json` 包含统一的工作区脚本
+- 使用 `pnpm -r` 在所有包中运行命令
+- 使用 `pnpm --filter` 在特定包中运行命令
+- 开发脚本使用 `pnpm dev` 同时启动前后端
+
+### 构建和部署
+- 每个应用独立构建
+- 共享包需要先构建
+- 使用 turbo 或 nx 优化构建流程（可选）
+
+---
+
+## 通用规则
+
+### 代码风格
+- 使用 TypeScript 严格模式
+- 使用 ESLint 和 Prettier 进行代码格式化
+- 遵循 Airbnb TypeScript 风格指南
+- 使用 2 空格缩进
+- 使用单引号（字符串）
+- 行尾不使用分号（根据项目配置）
+- 最大行长度：100 字符
+
+### 命名规范
+- **文件命名**: 使用 kebab-case（如 `user-service.ts`, `company-controller.ts`）
+- **类命名**: 使用 PascalCase（如 `UserService`, `CompanyController`）
+- **变量/函数命名**: 使用 camelCase（如 `getUserById`, `companyList`）
+- **常量命名**: 使用 UPPER_SNAKE_CASE（如 `MAX_RETRY_COUNT`, `API_BASE_URL`）
+- **接口命名**: 使用 PascalCase，以 `I` 开头（可选）或直接使用描述性名称（如 `User`, `CompanyDto`）
+- **类型命名**: 使用 PascalCase（如 `SearchParams`, `ApiResponse`）
+
+### Git 提交规范
+- 使用 Conventional Commits 格式
+- 格式: `<type>(<scope>): <subject>`
+- 类型: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+- 示例: `feat(auth): add JWT token refresh mechanism`
+
+---
+
+## NestJS 后端规则
+
+### 项目结构 (apps/api)
+```
+apps/api/
+├── src/
+│   ├── {module}/              # 功能模块
+│   │   ├── {module}.controller.ts
+│   │   ├── {module}.service.ts
+│   │   ├── {module}.module.ts
+│   │   ├── dto/               # 数据传输对象
+│   │   │   ├── create-{entity}.dto.ts
+│   │   │   └── update-{entity}.dto.ts
+│   │   ├── entities/          # 数据库实体
+│   │   │   └── {entity}.entity.ts
+│   │   └── interfaces/        # 接口定义（可选）
+│   │       └── {interface}.interface.ts
+│   ├── common/                # 公共模块
+│   │   ├── guards/            # 守卫
+│   │   ├── decorators/        # 装饰器
+│   │   ├── filters/           # 异常过滤器
+│   │   ├── interceptors/      # 拦截器
+│   │   └── pipes/             # 管道
+│   ├── config/                # 配置文件
+│   ├── app.module.ts
+│   └── main.ts
+├── package.json
+└── tsconfig.json
+```
+
+### 共享类型使用
+- 从 `@company-search/types` 导入共享类型
+- DTO 可以继承共享类型
+- 确保前后端类型一致
+
+### 模块设计
+- 每个功能模块应该是独立的、可复用的
+- 使用依赖注入（DI）管理依赖关系
+- 模块之间通过导入/导出进行通信
+- 避免循环依赖
+
+### Controller 规则
+- Controller 只负责处理 HTTP 请求和响应
+- 业务逻辑应该在 Service 层
+- 使用装饰器进行路由定义和参数验证
+- 返回统一的响应格式
+- 使用 DTO 进行请求参数验证
+
+**示例**:
+```typescript
+@Controller('companies')
+@UseGuards(JwtAuthGuard)
+export class CompaniesController {
+  constructor(private readonly companiesService: CompaniesService) {}
+
+  @Get()
+  @ApiOperation({ summary: '获取公司列表' })
+  @ApiResponse({ status: 200, description: '成功' })
+  async findAll(@Query() query: GetCompaniesDto): Promise<ApiResponse<Company[]>> {
+    const result = await this.companiesService.findAll(query);
+    return { success: true, data: result };
+  }
+}
+```
+
+### Service 规则
+- Service 包含所有业务逻辑
+- Service 方法应该是纯函数（尽可能）
+- 使用 async/await 处理异步操作
+- 抛出适当的异常，让 Controller 处理
+- 使用 Repository 模式访问数据库
+
+**示例**:
+```typescript
+@Injectable()
+export class CompaniesService {
+  constructor(
+    @InjectRepository(Company)
+    private readonly companyRepository: Repository<Company>,
+  ) {}
+
+  async findAll(query: GetCompaniesDto): Promise<PaginatedResult<Company>> {
+    const { page, limit, ...filters } = query;
+    const [data, total] = await this.companyRepository.findAndCount({
+      where: filters,
+      skip: (page - 1) * limit,
+      take: limit,
+      order: { createdAt: 'DESC' },
+    });
+    return { data, total, page, limit };
+  }
+}
+```
+
+### DTO 规则
+- 使用 class-validator 进行验证
+- 使用 class-transformer 进行数据转换
+- DTO 应该清晰、简洁
+- 为每个 API 端点创建对应的 DTO
+
+**示例**:
+```typescript
+export class CreateCompanyDto {
+  @IsString()
+  @IsNotEmpty()
+  @ApiProperty({ description: '公司名称' })
+  companyName: string;
+
+  @IsEmail()
+  @IsOptional()
+  @ApiProperty({ description: '邮箱', required: false })
+  email?: string;
+}
+```
+
+### Entity 规则
+- 使用 TypeORM 装饰器定义实体
+- 实体应该反映数据库表结构
+- 使用关系装饰器定义关联
+- 添加索引以提高查询性能
+
+**示例**:
+```typescript
+@Entity('companies')
+export class Company {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar', length: 255 })
+  companyName: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  email: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+```
+
+### 异常处理
+- 使用 NestJS 内置异常类（`BadRequestException`, `UnauthorizedException` 等）
+- 创建自定义异常过滤器统一处理异常
+- 返回友好的错误信息
+- 记录错误日志
+
+### 认证和授权
+- 使用 JWT 进行身份验证
+- 创建 JWT Guard 保护需要认证的路由
+- 使用装饰器获取当前用户信息
+- 实现基于角色的访问控制（RBAC）（如需要）
+
+### 数据库操作
+- 使用 TypeORM Repository 进行数据库操作
+- 使用事务处理复杂操作
+- 避免 N+1 查询问题（使用 relations 或 QueryBuilder）
+- 使用索引优化查询性能
+- 使用迁移管理数据库结构变更
+
+### 环境变量
+- 使用 ConfigModule 管理环境变量
+- 创建 `.env.example` 文件
+- 验证必需的环境变量
+- 不要将敏感信息提交到版本控制
+
+### API 文档
+- 使用 Swagger/OpenAPI 生成 API 文档
+- 为每个端点添加描述和示例
+- 使用 `@ApiTags`, `@ApiOperation`, `@ApiResponse` 装饰器
+
+---
+
+## Next.js 前端规则
+
+### 项目结构 (apps/web)
+```
+apps/web/
+├── app/                      # App Router 页面
+│   ├── (auth)/              # 路由组
+│   │   ├── login/
+│   │   └── register/
+│   ├── (dashboard)/         # 受保护的路由组
+│   │   ├── layout.tsx       # 布局组件
+│   │   ├── search/
+│   │   └── companies/
+│   ├── api/                 # API Routes（如需要）
+│   └── layout.tsx           # 根布局
+│
+├── components/              # React 组件
+│   ├── {feature}/           # 按功能分组
+│   │   ├── {Component}.tsx
+│   │   └── {Component}.test.tsx
+│   └── common/              # 通用组件
+│
+├── lib/                     # 工具库
+│   ├── api/                 # API 客户端
+│   ├── utils/               # 工具函数（优先使用共享包）
+│   └── hooks/               # 自定义 Hooks
+│
+├── types/                   # 本地类型定义（优先使用共享包）
+│   └── {type}.ts
+│
+├── styles/                  # 样式文件
+│   └── globals.css
+│
+├── package.json
+├── next.config.js
+└── tsconfig.json
+```
+
+### 共享类型使用
+- 优先从 `@company-search/types` 导入类型
+- 本地类型仅用于组件特定的类型
+- 确保与后端 API 类型一致
+
+### 组件设计
+- 使用函数组件和 Hooks
+- 组件应该是单一职责的
+- 使用 TypeScript 定义 Props 类型
+- 组件文件应该包含组件名称（如 `CompanyTable.tsx`）
+- 将大型组件拆分为更小的子组件
+
+**示例**:
+```typescript
+interface CompanyTableProps {
+  companies: Company[];
+  onSelect?: (company: Company) => void;
+  loading?: boolean;
+}
+
+export function CompanyTable({ companies, onSelect, loading }: CompanyTableProps) {
+  if (loading) return <Loading />;
+  if (companies.length === 0) return <EmptyState />;
+  
+  return (
+    <table>
+      {/* table content */}
+    </table>
+  );
+}
+```
+
+### Hooks 规则
+- 自定义 Hooks 应该以 `use` 开头
+- Hooks 应该封装可复用的逻辑
+- 使用 `useCallback` 和 `useMemo` 优化性能
+- 正确处理依赖数组
+
+**示例**:
+```typescript
+export function useCompanies(query: SearchQuery) {
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  const fetchCompanies = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await api.companies.search(query);
+      setCompanies(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [query]);
+  
+  useEffect(() => {
+    fetchCompanies();
+  }, [fetchCompanies]);
+  
+  return { companies, loading, refetch: fetchCompanies };
+}
+```
+
+### API 客户端
+- 创建统一的 API 客户端
+- 使用 axios 或 fetch 进行 HTTP 请求
+- 统一处理错误和响应
+- 添加请求拦截器处理认证 Token
+- 添加响应拦截器处理错误
+
+**示例**:
+```typescript
+const apiClient = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+});
+
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+apiClient.interceptors.response.use(
+  (response) => response.data,
+  (error) => {
+    if (error.response?.status === 401) {
+      // 处理未授权
+    }
+    return Promise.reject(error);
+  }
+);
+```
+
+### 路由保护
+- 创建中间件或 HOC 保护需要认证的路由
+- 检查 Token 是否存在和有效
+- 未登录用户重定向到登录页
+- 保存原始 URL，登录后重定向回去
+
+**示例**:
+```typescript
+export function withAuth<P extends object>(Component: React.ComponentType<P>) {
+  return function AuthenticatedComponent(props: P) {
+    const { isAuthenticated, isLoading } = useAuth();
+    const router = useRouter();
+    
+    useEffect(() => {
+      if (!isLoading && !isAuthenticated) {
+        router.push('/login');
+      }
+    }, [isAuthenticated, isLoading, router]);
+    
+    if (isLoading || !isAuthenticated) return <Loading />;
+    return <Component {...props} />;
+  };
+}
+```
+
+### 状态管理
+- 优先使用 React 内置状态（useState, useReducer）
+- 对于复杂状态，考虑使用 Zustand 或 Context API
+- 避免过度使用全局状态
+- 使用 React Query 或 SWR 管理服务器状态
+
+### 样式规范
+- 使用 Tailwind CSS 或 CSS Modules
+- 保持样式的一致性
+- 使用 CSS 变量管理主题颜色
+- 响应式设计优先（移动端优先）
+
+### 国际化 (i18n)
+- 使用 next-intl 或 react-i18next
+- 将所有文本内容提取到翻译文件
+- 支持语言切换
+- 使用命名空间组织翻译内容
+
+**示例**:
+```typescript
+// 使用 next-intl
+import { useTranslations } from 'next-intl';
+
+export function SearchForm() {
+  const t = useTranslations('search');
+  
+  return (
+    <form>
+      <label>{t('keywords')}</label>
+      <input placeholder={t('keywordsPlaceholder')} />
+    </form>
+  );
+}
+```
+
+### 性能优化
+- 使用 `next/image` 优化图片
+- 使用动态导入（`dynamic import`）进行代码分割
+- 使用 `React.memo` 防止不必要的重渲染
+- 使用 `useMemo` 和 `useCallback` 优化计算和函数
+- 实现虚拟滚动（如果列表很长）
+- 使用 Next.js 的缓存机制
+
+### 错误处理
+- 使用 Error Boundary 捕获组件错误
+- 显示友好的错误信息
+- 记录错误日志
+- 提供错误恢复机制
+
+### 表单处理
+- 使用 React Hook Form 处理表单
+- 使用 Zod 或 Yup 进行表单验证
+- 显示清晰的验证错误信息
+- 防止重复提交
+
+### 测试
+- 为关键组件编写单元测试
+- 使用 React Testing Library
+- 测试用户交互，而不是实现细节
+- 保持测试简单和可维护
+
+---
+
+## 代码质量
+
+### TypeScript
+- 避免使用 `any` 类型
+- 使用类型推断，但明确复杂类型
+- 使用接口定义对象结构
+- 使用类型别名提高可读性
+- 使用泛型提高代码复用性
+
+### 错误处理
+- 始终处理异步操作的错误
+- 使用 try-catch 捕获异常
+- 提供有意义的错误信息
+- 记录错误日志
+
+### 代码注释
+- 为复杂逻辑添加注释
+- 使用 JSDoc 注释函数和类
+- 保持注释与代码同步
+- 避免显而易见的注释
+
+### 代码审查
+- 所有代码必须经过审查
+- 关注代码质量、性能和安全性
+- 提供建设性的反馈
+- 及时响应审查意见
+
+---
+
+## 安全最佳实践
+
+### 后端安全
+- 验证所有用户输入
+- 使用参数化查询防止 SQL 注入
+- 实施速率限制防止 API 滥用
+- 使用 HTTPS 加密通信
+- 安全存储敏感信息（密码、Token）
+- 实施 CORS 策略
+
+### 前端安全
+- 验证用户输入
+- 防止 XSS 攻击（转义用户输入）
+- 安全存储 Token（考虑使用 httpOnly cookies）
+- 实施 CSP（内容安全策略）
+- 不要在前端代码中暴露敏感信息
+
+---
+
+## 性能最佳实践
+
+### 后端性能
+- 使用数据库索引优化查询
+- 实现缓存策略（Redis）
+- 使用分页限制返回数据量
+- 优化数据库查询（避免 N+1 问题）
+- 使用异步处理长时间运行的任务
+
+### 前端性能
+- 代码分割和懒加载
+- 优化图片和资源
+- 使用 CDN 加速静态资源
+- 实现虚拟滚动（长列表）
+- 减少不必要的重渲染
+
+---
+
+## 文档要求
+
+### 代码文档
+- README.md 包含项目概述和快速开始指南
+- API 文档使用 Swagger
+- 复杂函数和类添加 JSDoc 注释
+- 更新 CHANGELOG.md 记录变更
+
+### 开发文档
+- 记录架构决策（ADR）
+- 维护开发环境设置指南
+- 记录部署流程
+
+---
+
+## 依赖管理
+
+### 包管理
+- 使用固定版本或版本范围锁定依赖
+- 定期更新依赖以修复安全漏洞
+- 使用 `npm audit` 检查安全问题
+- 避免使用已弃用的包
+
+### 依赖选择
+- 选择维护良好的包
+- 检查包的许可证
+- 评估包的大小和性能影响
+- 优先使用官方推荐的包
+
+---
+
+## 持续集成/持续部署 (CI/CD)
+
+### 自动化测试
+- 运行单元测试
+- 运行集成测试
+- 检查代码覆盖率
+- 运行 linting 和格式化检查
+
+### 部署流程
+- 自动化构建过程
+- 自动化部署到测试环境
+- 手动批准后部署到生产环境
+- 实施回滚机制
+
+---
+
+## Monorepo 特定最佳实践
+
+### 代码共享
+- 类型定义放在 `packages/types`
+- 工具函数放在 `packages/utils`
+- 配置和常量放在 `packages/config`
+- 避免在应用之间直接引用代码
+
+### 依赖管理
+- 使用 `workspace:*` 引用本地包
+- 定期更新依赖版本
+- 使用 `pnpm update` 更新依赖
+- 检查依赖冲突
+
+### 开发工作流
+- 使用 `pnpm dev` 同时启动所有应用
+- 使用 `pnpm build` 构建所有包
+- 使用 `pnpm test` 运行所有测试
+- 使用 `pnpm lint` 检查所有代码
+
+### 版本管理
+- 共享包使用语义化版本
+- 使用 changesets 管理版本（可选）
+- 确保版本兼容性
+
+### CI/CD
+- 在 CI 中安装所有依赖: `pnpm install --frozen-lockfile`
+- 构建所有包: `pnpm build`
+- 运行所有测试: `pnpm test`
+- 只部署变更的包（使用 turbo/nx）
+
+---
+
+## 总结
+
+遵循这些最佳实践将有助于：
+- 提高代码质量和可维护性
+- 减少 bug 和安全漏洞
+- 改善开发体验
+- 加快开发速度
+- 确保项目长期可维护
+- 实现代码复用和类型安全
+
+记住：规则是指导原则，不是绝对要求。根据项目实际情况灵活调整。
+

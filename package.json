@@ -1,0 +1,40 @@
+{
+  "name": "company-search-monorepo",
+  "version": "1.0.0",
+  "description": "Company Search System Monorepo",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/start.js",
+    "start:sh": "bash scripts/start.sh",
+    "start:win": "scripts\\start.bat",
+    "view-db": "node scripts/view-db.js",
+    "reset-db": "node scripts/reset-database.js",
+    "view-db:docker": "bash scripts/view-db-docker.sh",
+    "check": "bash scripts/check-services.sh",
+    "stop": "bash scripts/stop-all.sh",
+    "fix-bcrypt": "bash scripts/fix-bcrypt.sh",
+    "start-db": "bash scripts/start-db.sh",
+    "setup-db": "bash scripts/setup-database.sh",
+    "install-pg": "bash scripts/install-postgresql.sh",
+    "start-pg": "bash scripts/start-postgres-docker.sh",
+    "dev": "pnpm -r --parallel --filter './packages/*' --filter './apps/*' dev",
+    "dev:api": "pnpm --filter @company-search/api dev",
+    "dev:web": "pnpm --filter @company-search/web dev",
+    "build": "pnpm -r build",
+    "build:packages": "pnpm -r --filter './packages/*' build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "type-check": "pnpm -r type-check"
+  },
+  "devDependencies": {
+    "prettier": "^3.1.1",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
+

@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+:root {
+  --apple-blue: #007AFF;
+  --apple-gray-1: #F5F5F7;
+  --apple-gray-2: #E5E5EA;
+  --apple-gray-3: #D1D1D6;
+  --apple-gray-4: #8E8E93;
+  --apple-gray-5: #636366;
+  --apple-gray-6: #48484A;
+  --apple-gray-7: #1C1C1E;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background: #FBFBFD;
+  color: #1D1D1F;
+  line-height: 1.47059;
+  letter-spacing: -0.022em;
+}
+
+/* Apple-style smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Apple-style input fields */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  color: #1D1D1F !important;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+textarea:focus,
+select:focus {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-color: var(--apple-blue);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+  outline: none;
+}
+
+input[type="text"]::placeholder,
+input[type="email"]::placeholder,
+input[type="password"]::placeholder,
+input[type="number"]::placeholder,
+textarea::placeholder {
+  color: #86868B !important;
+}
+
+/* Apple-style glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* Apple-style smooth transitions */
+.transition-apple {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Apple-style button hover effect */
+.button-apple {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateY(0);
+}
+
+.button-apple:hover {
+  transform: translateY(-1px);
+}
+
+.button-apple:active {
+  transform: translateY(0);
+}
+
