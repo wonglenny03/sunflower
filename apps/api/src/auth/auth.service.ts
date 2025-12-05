@@ -1,10 +1,6 @@
-import {
-  Injectable,
-  UnauthorizedException,
-  ConflictException,
-} from '@nestjs/common'
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
-import * as bcrypt from 'bcrypt'
+import * as bcrypt from 'bcryptjs'
 import { UsersService } from '../users/users.service'
 import { User } from '../users/entities/user.entity'
 import { RegisterDto } from './dto/register.dto'
@@ -27,8 +23,7 @@ export class AuthService {
     }
 
     // Check if username already exists
-    const existingUserByUsername =
-      await this.usersService.findByUsername(username)
+    const existingUserByUsername = await this.usersService.findByUsername(username)
     if (existingUserByUsername) {
       throw new ConflictException('Username already exists')
     }
@@ -95,4 +90,3 @@ export class AuthService {
     return this.usersService.findById(userId)
   }
 }
-
