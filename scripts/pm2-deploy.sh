@@ -77,8 +77,10 @@ fi
 log_success "PM2: $(pm2 -v)"
 
 # 检查环境变量
-log_info "检查环境变量..."
-if [ ! -f "${APP_DIR}/apps/api/.env" ]; then
+log_info "检查环境变量文件..."
+ENV_FILE="${APP_DIR}/apps/api/.env"
+
+if [ ! -f "$ENV_FILE" ]; then
     log_warning "环境变量文件不存在，创建默认配置..."
     
     # 读取数据库凭据（如果存在）
@@ -91,7 +93,7 @@ if [ ! -f "${APP_DIR}/apps/api/.env" ]; then
     
     # 创建环境变量文件
     mkdir -p ${APP_DIR}/apps/api
-    cat > ${APP_DIR}/apps/api/.env <<EOF
+    cat > ${ENV_FILE} <<EOF
 # 数据库配置
 ${DATABASE_URL}
 
@@ -116,11 +118,12 @@ SMTP_FROM=noreply@yourdomain.com
 # 前端 URL
 FRONTEND_URL=http://localhost:${WEB_PORT}
 EOF
-    chown ${APP_USER}:${APP_USER} ${APP_DIR}/apps/api/.env
-    chmod 600 ${APP_DIR}/apps/api/.env
-    log_warning "请编辑 ${APP_DIR}/apps/api/.env 设置 OPENAI_API_KEY 和 SMTP 配置"
+    chown ${APP_USER}:${APP_USER} ${ENV_FILE}
+    chmod 600 ${ENV_FILE}
+    log_warning "已创建默认 .env 文件，请编辑 ${ENV_FILE} 设置 OPENAI_API_KEY 和 SMTP 配置"
 else
-    log_success "环境变量文件已存在"
+    log_success "环境变量文件已存在: ${ENV_FILE}"
+    log_info "如果环境变量有更新，请重启应用: sudo -u ${APP_USER} pm2 restart company-search-api"
 fi
 
 # 前端环境变量
@@ -170,6 +173,14 @@ log_success "前端构建完成"
 # 配置 PM2
 log_info "配置 PM2..."
 PM2_CONFIG="/home/${APP_USER}/ecosystem.config.js"
+
+# 检查 .env 文件是否存在
+ENV_FILE="${APP_DIR}/apps/api/.env"
+if [ ! -f "$ENV_FILE" ]; then
+    log_warning ".env 文件不存在: $ENV_FILE"
+    log_info "将使用默认环境变量，建议创建 .env 文件"
+fi
+
 cat > ${PM2_CONFIG} <<EOF
 module.exports = {
   apps: [
@@ -188,7 +199,9 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
       autorestart: true,
-      max_memory_restart: '500M'
+      max_memory_restart: '500M',
+      watch: false,
+      ignore_watch: ['node_modules', 'logs', 'dist']
     },
     {
       name: 'company-search-web',
@@ -199,14 +212,17 @@ module.exports = {
       exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
-        PORT: ${WEB_PORT}
+        PORT: ${WEB_PORT},
+        NEXT_PUBLIC_API_URL: 'http://localhost:${API_PORT}'
       },
       error_file: '/home/${APP_USER}/logs/web-error.log',
       out_file: '/home/${APP_USER}/logs/web-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
       autorestart: true,
-      max_memory_restart: '500M'
+      max_memory_restart: '500M',
+      watch: false,
+      ignore_watch: ['node_modules', 'logs', '.next']
     }
   ]
 };
@@ -260,8 +276,13 @@ echo "  后端 API: http://${PUBLIC_IP}:${API_PORT}/api"
 echo "  API 文档: http://${PUBLIC_IP}:${API_PORT}/api/docs"
 echo ""
 echo -e "${CYAN}重要提醒:${NC}"
-echo "  1. 请编辑 ${APP_DIR}/apps/api/.env 设置 OPENAI_API_KEY"
-echo "  2. 请编辑 ${APP_DIR}/apps/api/.env 配置 SMTP 邮件服务"
-echo "  3. 配置完成后重启: sudo -u ${APP_USER} pm2 restart all"
+echo "  1. .env 文件位置: ${ENV_FILE}"
+echo "  2. 代码目录: ${APP_DIR}"
+echo "  3. 请编辑 ${ENV_FILE} 设置 OPENAI_API_KEY"
+echo "  4. 请编辑 ${ENV_FILE} 配置 SMTP 邮件服务"
+echo "  5. 配置完成后重启: sudo -u ${APP_USER} pm2 restart company-search-api"
+echo ""
+echo -e "${CYAN}PM2 配置文件:${NC}"
+echo "  ${PM2_CONFIG}"
 echo ""
 
