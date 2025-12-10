@@ -115,7 +115,7 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 SMTP_FROM=noreply@yourdomain.com
 
-# 前端 URL
+# 前端 URL（用于 CORS 配置）
 FRONTEND_URL=http://localhost:${WEB_PORT}
 EOF
     chown ${APP_USER}:${APP_USER} ${ENV_FILE}
